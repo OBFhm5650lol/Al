@@ -1,0 +1,388 @@
+local ToDisable = {
+	Textures = true,
+	VisualEffects = true,
+	Parts = true,
+	Particles = true,
+	Sky = true
+}
+
+local ToEnable = {
+	FullBright = false
+}
+
+local Stuff = {}
+
+for _, v in next, game:GetDescendants() do
+	if ToDisable.Parts then
+		if v:IsA("Part") or v:IsA("Union") or v:IsA("BasePart") then
+			v.Material = Enum.Material.SmoothPlastic
+			table.insert(Stuff, 1, v)
+		end
+	end
+	
+	if ToDisable.Particles then
+		if v:IsA("ParticleEmitter") or v:IsA("Smoke") or v:IsA("Explosion") or v:IsA("Sparkles") or v:IsA("Fire") then
+			v.Enabled = false
+			table.insert(Stuff, 1, v)
+		end
+	end
+	
+	if ToDisable.VisualEffects then
+		if v:IsA("BloomEffect") or v:IsA("BlurEffect") or v:IsA("DepthOfFieldEffect") or v:IsA("SunRaysEffect") then
+			v.Enabled = false
+			table.insert(Stuff, 1, v)
+		end
+	end
+	
+	if ToDisable.Textures then
+		if v:IsA("Decal") or v:IsA("Texture") then
+			v.Texture = ""
+			table.insert(Stuff, 1, v)
+		end
+	end
+	
+	if ToDisable.Sky then
+		if v:IsA("Sky") then
+			v.Parent = nil
+			table.insert(Stuff, 1, v)
+		end
+	end
+end
+
+game:GetService("TestService"):Message("Effects Disabler Script : Successfully disabled "..#Stuff.." assets / effects. Settings :")
+
+for i, v in next, ToDisable do
+	print(tostring(i)..": "..tostring(v))
+end
+
+if ToEnable.FullBright then
+    local Lighting = game:GetService("Lighting")
+    
+    Lighting.FogColor = Color3.fromRGB(255, 255, 255)
+    Lighting.FogEnd = math.huge
+    Lighting.FogStart = math.huge
+    Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+    Lighting.Brightness = 5
+    Lighting.ColorShift_Bottom = Color3.fromRGB(255, 255, 255)
+    Lighting.ColorShift_Top = Color3.fromRGB(255, 255, 255)
+    Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+    Lighting.Outlines = true
+end
+
+local AntiLag = {
+    Settings = {
+        RemoveDecals = true,
+        OptimizeTerrain = true,
+        OptimizeLighting = true,
+        OptimizeParts = true,
+        OptimizeCharacters = true,
+        OptimizeEffects = true,
+        OptimizeNetwork = true,
+        TextureReplacementId = "rbxassetid://10385902758728957",
+        MaxFPS = 60, -- Set to nil for unlimited
+        QualityLevel = "Level01", -- Level01 to Level21
+        PhysicsMode = "Default", -- "Default", "ClientPhysics", "ServerPhysics"
+        NetworkOwnership = "Automatic" -- "Automatic", "Manual", "Client", "Server"
+    },
+    
+    -- Internal state
+    _connections = {},
+    _optimizedPlayers = {}
+}
+
+-- Cache frequently used services
+local game = game
+local workspace = game:GetService("Workspace")
+local lighting = game:GetService("Lighting")
+local runService = game:GetService("RunService")
+local players = game:GetService("Players")
+local replicatedStorage = game:GetService("ReplicatedStorage")
+local userInputService = game:GetService("UserInputService")
+local physicsService = game:GetService("PhysicsService")
+local networkClient = game:GetService("NetworkClient")
+
+-- Helper functions
+local function deepPrint(table, indent)
+    indent = indent or 0
+    for k, v in pairs(table) do
+        local prefix = string.rep("  ", indent)
+        if type(v) == "table" then
+            print(prefix .. tostring(k) .. ":")
+            deepPrint(v, indent + 1)
+        else
+            print(prefix .. tostring(k) .. ": " .. tostring(v))
+        end
+    end
+end
+
+local function safeDisconnect(connection)
+    if connection and connection.Connected then
+        connection:Disconnect()
+    end
+end
+
+-- Optimization functions
+function AntiLag.optimizeTerrain()
+    if not AntiLag.Settings.OptimizeTerrain then return end
+    
+    local terrain = workspace.Terrain
+    terrain.WaterWaveSize = 0
+    terrain.WaterWaveSpeed = 0
+    terrain.WaterReflectance = 0
+    terrain.WaterTransparency = 1
+    terrain.Decoration = false
+    
+    -- Set lower quality rendering for terrain
+    if AntiLag.Settings.QualityLevel then
+        terrain:SetRenderQuality(Enum.RenderQuality.Automatic)
+    end
+end
+
+function AntiLag.optimizeLighting()
+    if not AntiLag.Settings.OptimizeLighting then return end
+    
+    lighting.GlobalShadows = false
+    lighting.FogEnd = 9e9
+    lighting.Brightness = 1
+    lighting.Outlines = false
+    lighting.Ambient = Color3.new(0.5, 0.5, 0.5)
+    lighting.EnvironmentDiffuseScale = 0
+    lighting.EnvironmentSpecularScale = 0
+    
+    -- Disable post-processing effects
+    for _, effect in ipairs(lighting:GetChildren()) do
+        if effect:IsA("PostEffect") then
+            effect.Enabled = false
+        end
+    end
+    
+    -- Optimize sky
+    local sky = lighting:FindFirstChildOfClass("Sky")
+    if sky then
+        sky.SkyboxBk = "rbxassetid://1038574965"
+        sky.SkyboxDn = "rbxassetid://1038574965"
+        sky.SkyboxFt = "rbxassetid://1038574965"
+        sky.SkyboxLf = "rbxassetid://1038574965"
+        sky.SkyboxRt = "rbxassetid://1038574965"
+        sky.SkyboxUp = "rbxassetid://1038574965"
+        sky.CelestialBodiesShown = false
+        sky.StarCount = 0
+    end
+end
+
+function AntiLag.optimizeRendering()
+    settings().Rendering.QualityLevel = AntiLag.Settings.QualityLevel or "Level01"
+    settings().Rendering.EagerBulkExecution = true
+    
+    if AntiLag.Settings.MaxFPS then
+        runService:SetThrottleFPS(AntiLag.Settings.MaxFPS)
+    end
+    
+    -- Optimize graphics based on device
+    local success, result = pcall(function()
+        return userInputService:GetPlatform()
+    end)
+    
+    if success then
+        if result == Enum.Platform.Windows or result == Enum.Platform.OSX then
+            settings().Rendering.FrameRateManager = 2 -- Automatic
+        else
+            settings().Rendering.FrameRateManager = 1 -- On
+        end
+    end
+end
+
+function AntiLag.optimizePhysics()
+    if AntiLag.Settings.PhysicsMode then
+        physicsService.PhysicsEnvironmentalThrottle = Enum.EnviromentalPhysicsThrottle.Auto
+        if AntiLag.Settings.PhysicsMode == "ClientPhysics" then
+            physicsService.ThrottleType = Enum.ThrottleType.ClientPhysics
+        elseif AntiLag.Settings.PhysicsMode == "ServerPhysics" then
+            physicsService.ThrottleType = Enum.ThrottleType.ServerPhysics
+        end
+    end
+end
+
+function AntiLag.optimizeNetwork()
+    if not AntiLag.Settings.OptimizeNetwork then return end
+    
+    if AntiLag.Settings.NetworkOwnership then
+        if AntiLag.Settings.NetworkOwnership == "Automatic" then
+            networkClient:SetIncomingReplicationRate(60)
+        elseif AntiLag.Settings.NetworkOwnership == "Manual" then
+            networkClient:SetIncomingReplicationRate(30)
+        elseif AntiLag.Settings.NetworkOwnership == "Client" then
+            networkClient:SetIncomingReplicationRate(60)
+        elseif AntiLag.Settings.NetworkOwnership == "Server" then
+            networkClient:SetIncomingReplicationRate(30)
+        end
+    end
+end
+
+function AntiLag.optimizeBaseParts(instance)
+    if not AntiLag.Settings.OptimizeParts then return end
+    
+    if instance:IsA("BasePart") then
+        instance.Material = Enum.Material.Plastic
+        instance.Reflectance = 0
+        
+        if AntiLag.Settings.OptimizeNetwork and instance:CanSetNetworkOwnership() then
+            if AntiLag.Settings.NetworkOwnership == "Manual" then
+                instance:SetNetworkOwner(nil)
+            elseif AntiLag.Settings.NetworkOwnership == "Client" then
+                instance:SetNetworkOwner(players.LocalPlayer)
+            end
+        end
+        
+        if instance:IsA("MeshPart") then
+            instance.TextureID = AntiLag.Settings.TextureReplacementId
+        end
+    end
+end
+
+function AntiLag.optimizeCharacter(character)
+    if not AntiLag.Settings.OptimizeCharacters then return end
+    
+    for _, part in ipairs(character:GetDescendants()) do
+        AntiLag.optimizeBaseParts(part)
+        AntiLag.optimizeVisualEffects(part)
+        
+        if part:IsA("Humanoid") then
+            part.AutoRotate = false
+            part.AutoJumpEnabled = false
+            part.WalkSpeed = 16 -- Maintain normal walk speed
+        end
+        
+        if part:IsA("Shirt") or part:IsA("Pants") then
+            part:Destroy()
+        elseif part:IsA("CharacterMesh") then
+            part:Destroy()
+        elseif part:IsA("Accessory") and part:FindFirstChild("Handle") then
+            local handle = part.Handle
+            handle.Material = Enum.Material.Plastic
+            handle.Reflectance = 0
+        end
+    end
+end
+
+function AntiLag.optimizeVisualEffects(instance)
+    if not AntiLag.Settings.OptimizeEffects then return end
+    
+    if instance:IsA("ParticleEmitter") or instance:IsA("Trail") then
+        instance.Lifetime = NumberRange.new(0)
+    elseif instance:IsA("Explosion") then
+        instance.BlastPressure = 1
+        instance.BlastRadius = 1
+    elseif instance:IsA("Fire") or instance:IsA("SpotLight") or instance:IsA("Smoke") then
+        instance.Enabled = false
+    elseif (instance:IsA("Decal") or instance:IsA("Texture")) and AntiLag.Settings.RemoveDecals then
+        instance.Transparency = 1
+    elseif instance:IsA("SurfaceGui") then
+        instance.Enabled = false
+    elseif instance:IsA("Beam") then
+        instance.Enabled = false
+    end
+end
+
+function AntiLag.optimizeExistingInstances()
+    for _, instance in ipairs(game:GetDescendants()) do
+        AntiLag.optimizeBaseParts(instance)
+        AntiLag.optimizeVisualEffects(instance)
+    end
+end
+
+function AntiLag.setupPlayerOptimizations(player)
+    if not player:IsA("Player") then return end
+    
+    -- Avoid duplicate optimizations
+    if AntiLag._optimizedPlayers[player] then return end
+    AntiLag._optimizedPlayers[player] = true
+    
+    player.CameraMaxZoomDistance = 100
+    player.CameraMode = Enum.CameraMode.Classic
+    
+    -- Optimize character when it spawns
+    local charAddedConn = player.CharacterAdded:Connect(function(character)
+        AntiLag.optimizeCharacter(character)
+        
+        -- Also optimize when new parts are added to the character
+        local descendantAddedConn = character.DescendantAdded:Connect(function(descendant)
+            AntiLag.optimizeBaseParts(descendant)
+            AntiLag.optimizeVisualEffects(descendant)
+        end)
+        
+        -- Store connection for cleanup
+        table.insert(AntiLag._connections, descendantAddedConn)
+    end)
+    
+    -- Store connection for cleanup
+    table.insert(AntiLag._connections, charAddedConn)
+end
+
+function AntiLag.cleanup()
+    -- Disconnect all event connections
+    for _, connection in ipairs(AntiLag._connections) do
+        safeDisconnect(connection)
+    end
+    AntiLag._connections = {}
+    
+    -- Clear player tracking
+    AntiLag._optimizedPlayers = {}
+end
+
+function AntiLag.printSettings()
+    print("Current AntiLag Settings:")
+    deepPrint(AntiLag.Settings)
+end
+
+-- Initialize optimizations
+function AntiLag.init()
+    -- Clear any previous connections
+    AntiLag.cleanup()
+    
+    -- Apply optimizations
+    AntiLag.optimizeTerrain()
+    AntiLag.optimizeLighting()
+    AntiLag.optimizeRendering()
+    AntiLag.optimizePhysics()
+    AntiLag.optimizeNetwork()
+    AntiLag.optimizeExistingInstances()
+    
+    -- Set up connections for new instances and players
+    local descendantAddedConn = game.DescendantAdded:Connect(function(instance)
+        AntiLag.optimizeBaseParts(instance)
+        AntiLag.optimizeVisualEffects(instance)
+    end)
+    table.insert(AntiLag._connections, descendantAddedConn)
+    
+    local playerAddedConn = players.PlayerAdded:Connect(AntiLag.setupPlayerOptimizations)
+    table.insert(AntiLag._connections, playerAddedConn)
+    
+    -- Optimize existing players
+    for _, player in ipairs(players:GetPlayers()) do
+        AntiLag.setupPlayerOptimizations(player)
+    end
+    
+    print("AntiLag initialized successfully!")
+end
+
+-- Initialize on script load
+AntiLag.init()
+
+return AntiLag
+
+
+
+ 
+wait(1)
+ 
+local parts = game.Workspace:GetChildren()
+for i = 1,#parts do
+	local name = string.lower(parts[i].Name)
+	if (string.find(name,"lag") ~= nil) and ((string.find(name,"anti") ~= nil) or (string.find(name,"no") ~= nil) or (string.find(name,"remover") ~= nil) or (string.find(name,"killer") ~= nil)) and (parts[i] ~= script) then
+		parts[i]:remove()
+	end
+end
+ 
+wait()
+script:remove()
